@@ -22,6 +22,7 @@ defmodule PingPong.Consumer do
   end
 
   def init(_args) do
+    Process.send_after(self(), :catch_me_up, 100)
     {:ok, @initial}
   end
 
@@ -49,5 +50,13 @@ defmodule PingPong.Consumer do
   def handle_call(:crash, _from, _data) do
     _count = 42/0
     {:reply, :ok, @initial}
+  end
+
+  def handle_info(:catch_me_up, data) do
+    GenServer.abcast(Producer, {:catch_up, self()})
+    {:noreply, data}
+  end
+  def handle_info(_msg, data) do
+    {:noreply, data}
   end
 end
