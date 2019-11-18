@@ -24,16 +24,27 @@ defmodule Shortener.LinkManager do
 
   def create(url) do
     short_code = generate_short_code(url)
+    Cache.broadcast_insert(short_code, url)
+    Storage.set(short_code, url)
 
     {:ok, short_code}
   end
 
   def lookup(short_code) do
-    Storage.get(short_code)
+    case Cache.lookup(short_code) do
+      {:ok, url} -> {:ok, url}
+      {:error, :not_found} ->
+        case Storage.get(short_code) do
+          {:ok, url} ->
+            Cache.insert(short_code, url)
+            {:ok, url}
+          error -> error
+        end
+    end
   end
 
   def remote_lookup(short_code) do
-    # TODO - Do a remote lookup
+    GenServer.multi_call(Cache, :lookup)
   end
 
   def generate_short_code(url) do
