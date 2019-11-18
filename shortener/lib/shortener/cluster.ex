@@ -23,7 +23,8 @@ defmodule Shortener.Cluster do
   end
 
   def find_node(key) do
-    # TODO - Update with hash ring lookup
+    hash_ring = :persistent_term.get(@ring_key)
+    HashRing.find_node(hash_ring, key)
   end
 
   # Sets the canonical set of nodes into persistent storage.
@@ -33,8 +34,13 @@ defmodule Shortener.Cluster do
   end
 
   def update_ring do
-    # TODO - Fetch nodes from persistent store, update hash ring
-    # put the hash ring into persistent term storage.
+    {:ok, bin} = Storage.get("shortener:cluster")
+    nodes = :erlang.binary_to_term(bin)
+    new_hash_ring = Enum.reduce(nodes, HashRing.new(), fn node, acc_ring ->
+      {:ok, updated_ring} = HashRing.add_node(acc_ring, node)
+      updated_ring
+    end)
+    :persistent_term.put(@ring_key, new_hash_ring)
     :ok
   end
 

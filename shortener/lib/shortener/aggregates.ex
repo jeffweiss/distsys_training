@@ -8,7 +8,10 @@ defmodule Shortener.Aggregates do
 
   def count_for(table \\ __MODULE__, hash) do
     # TODO: Do lookup from ets in the client process
-    0
+    case :ets.lookup(table, hash) do
+      [] -> 0
+      [{^hash, count}|_] -> count
+    end
   end
 
   def increment(server \\ __MODULE__, hash) do
@@ -29,20 +32,27 @@ defmodule Shortener.Aggregates do
 
   def init(_args \\ []) do
     # TODO: Monitor node connections and disconnects
+    :net_kernel.monitor_nodes(true)
+    :ets.new(__MODULE__, [:named_table, :set, :protected])
 
     {:ok, %{table: __MODULE__, counters: %{}}}
   end
 
   def handle_cast({:increment, short_code}, %{counters: counters}=data) do
     # TODO: Increment counter and broadcast a merge to the other nodes
+    code_counter = Map.get(counters, short_code, GCounter.new())
+    updated_counter = GCounter.increment(code_counter)
+    :ets.insert(data.table, {short_code, GCounter.to_i(updated_counter)})
+    GenServer.abcast(Aggregates, {:merge, short_code, updated_counter})
 
-    {:noreply, data}
+    {:noreply, put_in(data.counters[short_code], updated_counter)}
   end
 
   def handle_cast({:merge, short_code, counter}, data) do
-    # TODO: Merge our existing set of counters with the new counter
-
-    {:noreply, data}
+    my_counter = Map.get(data.counters, short_code, GCounter.new())
+    merged_counter = GCounter.merge(my_counter, counter)
+    :ets.insert(data.table, {short_code, GCounter.to_i(merged_counter)})
+    {:noreply, put_in(data.counters[short_code], merged_counter)}
   end
 
   def handle_call(:flush, _from, data) do
@@ -50,6 +60,12 @@ defmodule Shortener.Aggregates do
     {:reply, :ok, %{data | counters: %{}}}
   end
 
+  def handle_info({:nodeup, node}, data) do
+    for {short_code, counter} <- data.counters do
+      GenServer.cast({Aggregates, node}, {:merge, short_code, counter})
+    end
+    {:noreply, data}
+  end
   def handle_info(msg, data) do
     # TODO - Handle node disconnects and reconnections
     Logger.info("Unhandled message: #{inspect msg}")

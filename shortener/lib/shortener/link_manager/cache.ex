@@ -7,6 +7,7 @@ defmodule Shortener.LinkManager.Cache do
   end
 
   def lookup(cache \\ __MODULE__, key) do
+    # IO.inspect(:ets.tab2list(cache), label: "pre-lookup table dump [#{Node.self()}]")
     case :ets.lookup(cache, key) do
       [] -> {:error, :not_found}
       [{^key, link}] -> {:ok, link}
@@ -32,11 +33,13 @@ defmodule Shortener.LinkManager.Cache do
 
   def handle_cast({:insert, key, value}, data) do
     :ets.insert(data.table, {key, value})
+    # IO.inspect(:ets.tab2list(data.table), label: "post-cast-insert table dump [#{Node.self()}]")
     {:noreply, data}
   end
 
   def handle_call({:insert, key, value}, _from, data) do
     :ets.insert(data.table, {key, value})
+    # IO.inspect(:ets.tab2list(data.table), label: "post-call-insert table dump [#{Node.self()}]")
     {:reply, :ok, data}
   end
 
